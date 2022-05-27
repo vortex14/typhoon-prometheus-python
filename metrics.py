@@ -1,3 +1,4 @@
+from sys import prefix
 from aioprometheus import Counter, Gauge, Summary, Histogram
 from pydantic import BaseModel, root_validator
 from aioprometheus import Registry
@@ -20,10 +21,18 @@ class Metric(MetricData):
     type: str
     description: str
 
+class Settings(BaseModel):
+    prometheus_prefix: str = "prefixapp"
+    app_name: str = "myapp"
+
+class Config(BaseModel):
+    registry: Any = None
+    _metrics: dict = {}
+    settings: Settings
+
 class TyphoonMetric(BaseModel):
+    settings: Settings
     metric: Metric
-    project_name: str
-    component_name: str
     active: bool = False
     config: Any = None
     exceptions_config: Any = None
@@ -31,25 +40,25 @@ class TyphoonMetric(BaseModel):
 
     @root_validator
     def set_prometheus_config(cls, values):
-        prefix = "typhoon_" + values["project_name"].replace('-', '_') + f"_{values['component_name']}"
-        prometheus_path = f'{prefix}_{values["metric"].name}'
+        prometheus_path = f"{values['settings'].prometheus_prefix}_{values['settings'].app_name.replace('-', '_')}_{values['metric'].name}"
+        print(prometheus_path)
         values["prometheus_path"] = prometheus_path
         if values["metric"].type in Types.__dict__:
             Metric_class_type = Types.__dict__[values["metric"].type].value
             values["config"] = Metric_class_type(prometheus_path, values["metric"].description)
             if values["metric"].type == "counter":
-                values["exceptions_config"] = Metric_class_type(prometheus_path + "_exceptions_total", values["metric"].description + ". Only Exceptions.")
+                values["exceptions_config"] = Metric_class_type(f"{prometheus_path}_exceptions_total", f"{values['metric'].description}. Only Exceptions.")
         else:
             raise ValueError("metric type isn't valid")
 
         return values
 
 
+
 class Metrics:
-    def __init__(self, config) -> None:
+    def __init__(self, config: Config) -> None:
         self.config = config
         self.config.registry = Registry()
-        self.config._metrics = {}
 
     def show(self):
         return self.config._metrics
@@ -59,8 +68,7 @@ class Metrics:
         if not self.config._metrics.get(metric.name):
             self.config._metrics[metric.name] = TyphoonMetric(
                 metric = metric,
-                component_name = self.config.component_name,
-                project_name = self.config.project_name
+                settings=self.config.settings
             )
             self._init_metrics()
 
@@ -102,16 +110,16 @@ class Metrics:
         return decor
 
 
+
+
+
+
 if __name__ == "__main__":
-    class TestConfig:
-        registry: Any = None
-        _metrics: dict = {}
-        component_name = "processor"
-        project_name = "test-project"
+
 
     metric = Metric(name="on_message", type="counter", description="Input messages.", labels={})
     metric_2 = Metric(name="on_products", type="counter", description="Input messages.", labels={})
-    metrics = Metrics(TestConfig())
+    metrics = Metrics(Config(settings=Settings(prometheus_prefix="testprefix", app_name="typhoon")))
     metrics.add_new_metric(metric)
     metrics.add_new_metric(metric_2)
     debug(metrics.show())
