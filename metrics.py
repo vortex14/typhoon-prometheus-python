@@ -1,4 +1,3 @@
-from sys import prefix
 from aioprometheus import Counter, Gauge, Summary, Histogram
 from pydantic import BaseModel, root_validator
 from aioprometheus import Registry
@@ -41,7 +40,6 @@ class TyphoonMetric(BaseModel):
     @root_validator
     def set_prometheus_config(cls, values):
         prometheus_path = f"{values['settings'].prometheus_prefix}_{values['settings'].app_name.replace('-', '_')}_{values['metric'].name}"
-        print(prometheus_path)
         values["prometheus_path"] = prometheus_path
         if values["metric"].type in Types.__dict__:
             Metric_class_type = Types.__dict__[values["metric"].type].value
@@ -115,8 +113,6 @@ class Metrics:
 
 
 if __name__ == "__main__":
-
-
     metric = Metric(name="on_message", type="counter", description="Input messages.", labels={})
     metric_2 = Metric(name="on_products", type="counter", description="Input messages.", labels={})
     metrics = Metrics(Config(settings=Settings(prometheus_prefix="testprefix", app_name="typhoon")))
