@@ -1,9 +1,9 @@
 from aioprometheus import Counter, Gauge, Summary, Histogram
 from pydantic import BaseModel, root_validator
 from aioprometheus import Registry
-from devtools import debug
 from typing import Any, Tuple
 from enum import Enum
+
 
 class Types(Enum):
     counter = Counter
@@ -11,23 +11,28 @@ class Types(Enum):
     summary = Summary
     histogram = Histogram
 
+
 class MetricData(BaseModel):
     name: str
     labels: dict
     value: int = 0
 
+
 class Metric(MetricData):
     type: str
     description: str
+
 
 class Settings(BaseModel):
     prometheus_prefix: str = "prefixapp"
     app_name: str = "myapp"
 
+
 class Config(BaseModel):
     registry: Any = None
     _metrics: dict = {}
     settings: Settings
+
 
 class TyphoonMetric(BaseModel):
     settings: Settings
@@ -45,12 +50,12 @@ class TyphoonMetric(BaseModel):
             Metric_class_type = Types.__dict__[values["metric"].type].value
             values["config"] = Metric_class_type(prometheus_path, values["metric"].description)
             if values["metric"].type == "counter":
-                values["exceptions_config"] = Metric_class_type(f"{prometheus_path}_exceptions_total", f"{values['metric'].description}. Only Exceptions.")
+                values["exceptions_config"] = Metric_class_type(f"{prometheus_path}_exceptions_total",
+                                                                f"{values['metric'].description}. Only Exceptions.")
         else:
             raise ValueError("metric type isn't valid")
 
         return values
-
 
 
 class Metrics:
@@ -61,11 +66,10 @@ class Metrics:
     def show(self):
         return self.config._metrics
 
-
     def add_new_metric(self, metric: Metric):
         if not self.config._metrics.get(metric.name):
             self.config._metrics[metric.name] = TyphoonMetric(
-                metric = metric,
+                metric=metric,
                 settings=self.config.settings
             )
             self._init_metrics()
@@ -73,7 +77,7 @@ class Metrics:
     def set_exception(self, data: MetricData):
         current_metric = self.config._metrics[data.name]
         current_metric.exceptions_config.inc(data.labels)
-    
+
     def update(self, data: MetricData):
         current_metric = self.config._metrics[data.name]
         current_metric.config.inc(data.labels)
@@ -94,7 +98,7 @@ class Metrics:
             if ins.exceptions_config:
                 self.config.registry.register(ins.exceptions_config)
             ins.active = True
-    
+
     @staticmethod
     def add_metric(*metrics: Tuple[Metric, ...]):
         def decor(func):
@@ -104,18 +108,7 @@ class Metrics:
                     if metric.type in ["counter", "gauge"]:
                         self.config.metrics.update(MetricData(name=metric.name, labels=metric.labels))
                 return await func(self, *args, **kwargs)
+
             return wrapper
+
         return decor
-
-
-
-
-
-
-if __name__ == "__main__":
-    metric = Metric(name="on_message", type="counter", description="Input messages.", labels={})
-    metric_2 = Metric(name="on_products", type="counter", description="Input messages.", labels={})
-    metrics = Metrics(Config(settings=Settings(prometheus_prefix="testprefix", app_name="typhoon")))
-    metrics.add_new_metric(metric)
-    metrics.add_new_metric(metric_2)
-    debug(metrics.show())
